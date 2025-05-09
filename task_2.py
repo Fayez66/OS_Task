@@ -1,99 +1,88 @@
-import random
-import sys
+class Block:
+    def __init__(self, start, size, pid=None):
+        self.start = start
+        self.size = size
+        self.pid = pid  # None if free
 
-# Constants
-DISK_SIZE = 5000
-NUM_REQUESTS = 1000
+    def __str__(self):
+        if self.pid:
+            return f"[{self.start}-{self.start+self.size-1}] PID: {self.pid}"
+        else:
+            return f"[{self.start}-{self.start+self.size-1}] FREE"
 
-def generate_requests():
-    return random.sample(range(DISK_SIZE), NUM_REQUESTS)
+class MemoryManager:
+    def __init__(self, total_size):
+        self.total_size = total_size
+        self.memory = [Block(0, total_size)]
 
-def fcfs(requests, head):
-    movement = 0
-    for r in requests:
-        movement += abs(r - head)
-        head = r
-    return movement
+    def stat(self):
+        print(" Current Memory Layout:")
+        for block in self.memory:
+            print(str(block))
 
-def scan(requests, head, direction='up'):
-    movement = 0
-    requests.sort()
-    left = [r for r in requests if r < head]
-    right = [r for r in requests if r >= head]
+    def allocate(self, pid, size):
+        for i, block in enumerate(self.memory):
+            if block.pid is None and block.size >= size:
+                new_block = Block(block.start, size, pid)
+                remaining_size = block.size - size
+                if remaining_size > 0:
+                    self.memory[i] = new_block
+                    self.memory.insert(i+1, Block(block.start + size, remaining_size))
+                else:
+                    self.memory[i] = new_block
+                print(f" Allocated {size} units to PID {pid}")
+                return
+        print(f" Allocation failed for PID {pid}, insufficient memory")
 
-    if direction == 'up':
-        for r in right:
-            movement += abs(r - head)
-            head = r
-        if left:
-            movement += abs(head - (DISK_SIZE - 1))
-            head = DISK_SIZE - 1
-            for r in reversed(left):
-                movement += abs(r - head)
-                head = r
-    else:
-        for r in reversed(left):
-            movement += abs(r - head)
-            head = r
-        if right:
-            movement += abs(head - 0)
-            head = 0
-            for r in right:
-                movement += abs(r - head)
-                head = r
+    def deallocate(self, pid):
+        for block in self.memory:
+            if block.pid == pid:
+                block.pid = None
+                print(f"🗑 Deallocated memory of PID {pid}")
+                return
+        print(f"️ PID {pid} not found")
 
-    return movement
-
-def c_scan(requests, head, direction='up'):
-    movement = 0
-    requests.sort()
-    left = [r for r in requests if r < head]
-    right = [r for r in requests if r >= head]
-
-    if direction == 'up':
-        for r in right:
-            movement += abs(r - head)
-            head = r
-        if left:
-            movement += abs(head - (DISK_SIZE - 1))  # Go to end
-            movement += DISK_SIZE - 1  # Jump to start (circular)
-            head = 0
-            for r in left:
-                movement += abs(r - head)
-                head = r
-    else:
-        for r in reversed(left):
-            movement += abs(r - head)
-            head = r
-        if right:
-            movement += abs(head - 0)
-            movement += DISK_SIZE - 1  # Jump to end
-            head = DISK_SIZE - 1
-            for r in reversed(right):
-                movement += abs(r - head)
-                head = r
-
-    return movement
+    def compaction(self):
+        print(" Running compaction...")
+        new_memory = []
+        current = 0
+        for block in self.memory:
+            if block.pid is not None:
+                new_memory.append(Block(current, block.size, block.pid))
+                current += block.size
+        if current < self.total_size:
+            new_memory.append(Block(current, self.total_size - current))
+        self.memory = new_memory
+        print(" Compaction complete")
 
 def main():
-    if len(sys.argv) != 2:
-        print("Usage: python disk_schedule.py <initial_head_position>")
-        return
+    manager = MemoryManager(100)
 
-    try:
-        initial_head = int(sys.argv[1])
-        if not 0 <= initial_head < DISK_SIZE:
-            raise ValueError
-    except ValueError:
-        print(f"Initial head position must be an integer between 0 and {DISK_SIZE - 1}")
-        return
+    print(" Memory Manager Interactive Console")
+    print("Commands: stat, allocate <pid> <size>, deallocate <pid>, compaction, exit")
 
-    requests = generate_requests()
+    while True:
+        cmd = input(">>> ").strip().split()
+        if not cmd:
+            continue
+        action = cmd[0]
 
-    print(f"Initial Head Position: {initial_head}")
-    print(f"FCFS Total Movement: {fcfs(requests, initial_head)}")
-    print(f"SCAN Total Movement: {scan(requests, initial_head)}")
-    print(f"C-SCAN Total Movement: {c_scan(requests, initial_head)}")
+        if action == "stat":
+            manager.stat()
+        elif action == "allocate" and len(cmd) == 3:
+            pid = cmd[1]
+            size = int(cmd[2])
+            manager.allocate(pid, size)
+        elif action == "deallocate" and len(cmd) == 2:
+            pid = cmd[1]
+            manager.deallocate(pid)
+        elif action == "compaction":
+            manager.compaction()
+        elif action == "exit":
+            print(" Exiting Memory Manager.")
+            break
+        else:
+            print(" Invalid command")
 
 if __name__ == "__main__":
     main()
